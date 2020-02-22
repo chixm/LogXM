@@ -10,9 +10,9 @@ func TestLogging(t *testing.T) {
 
 	c := StandardConfig()
 
-	SetupLog(c)
+	New(c)
 
-	TerminateLogging()
+	//TerminateLogging(0)
 
 	time.Sleep(1 * time.Minute)
 }

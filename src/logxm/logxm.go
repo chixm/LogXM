@@ -2,9 +2,9 @@ package logxm
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	logrus "github.com/sirupsen/logrus"
@@ -13,16 +13,16 @@ import (
 /**
  * logxm is the Log library for Golang server.
  */
-
-var logger *logrus.Entry
-
 var logFile *os.File
+
+// For Log file lock
+var mutex sync.Mutex
 
 // LoggerConfiguration is a configuration for logging
 type LoggerConfiguration struct {
-	DirName     string
-	WriteToFile bool
-	FileName    string
+	DirName     string // directory to put log files in.
+	WriteToFile bool   // if true writes to file, false writes to stdout.
+	FileName    string // logfile name
 	DateFormat  string // ex."2006-01-02T15:04:05.999Z07:00"
 	LogRotation int    // max date to hold daily log files. if 0 is set, logfile does not rotate.
 }
@@ -34,14 +34,19 @@ type LoggerConfiguration struct {
  * useFile true:uses logfile false: outputs to standard output
  */
 
+// New : Create new Logger
+func New(config *LoggerConfiguration) *logrus.Logger {
+	return setupLog(config)
+}
+
 // SetupLog : Call this function first to start logging
-func SetupLog(config *LoggerConfiguration) {
+func setupLog(config *LoggerConfiguration) *logrus.Logger {
 	// if no configuration is set, use default
 	if config == nil {
 		config = StandardConfig()
 	}
 	// Configure Log Formats
-	var lg = logrus.New()
+	var log = logrus.New()
 	mode := int32(0777)
 	if config.WriteToFile { // create log directory
 		logDir := `.` + string(filepath.Separator) + config.DirName
@@ -55,19 +60,20 @@ func SetupLog(config *LoggerConfiguration) {
 	logFile := getLogFile(config)
 	f := new(logrus.JSONFormatter)
 	f.TimestampFormat = config.DateFormat
-	lg.Formatter = f
+	log.Formatter = f
 	hostname, _ := os.Hostname()
-	logger = lg.WithField("host", hostname) //always write log with hostname.
+	log.WithField("host", hostname) //always write log with hostname.
 
 	if config.WriteToFile {
-		lg.SetOutput(logFile)
+		log.SetOutput(logFile)
 	} else {
-		lg.SetOutput(os.Stdout)
+		log.SetOutput(os.Stdout)
 	}
 	if config.LogRotation > 0 {
-		go rotateLogging(config)
+		go rotateLogging(config, log)
 	}
-	logger.Info("LogXM is Setup for logging.")
+	log.Info("LogXM is Setup for logging.")
+	return log
 }
 
 // StandardConfig is Standard Configuration for Logxm
@@ -80,7 +86,7 @@ func getLogFile(config *LoggerConfiguration) *os.File {
 	mode := int32(0777)
 	file, err := os.OpenFile(getLogFileName(config), os.O_WRONLY|os.O_APPEND|os.O_CREATE, os.FileMode(mode))
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
 	}
 	return file
 }
@@ -90,25 +96,39 @@ func getLogFileName(config *LoggerConfiguration) string {
 }
 
 // TerminateLogging : use this when you want to finish writing log.
-func TerminateLogging() {
-	logFile.Close()
+func TerminateLogging(code int) {
+	if err := logFile.Close(); err != nil {
+		fmt.Println(err)
+	}
 }
 
 // rotates log file every day.
-func rotateLogging(config *LoggerConfiguration) {
+func rotateLogging(config *LoggerConfiguration, logger *logrus.Logger) {
 	tick := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
 	for {
 		select {
 		case <-tick.C:
 			// rename current logging file and create new one
-			fmt.Println(`Log Rotationt executed.`)
+			fmt.Println(`Log rotate executed.`)
+			replaceFileByRotation(logger)
+			// remake new file
 			current := getLogFileName(config)
-			const dateFormat = `20200101`
-			rotate := current + time.Now().Format(dateFormat)
+			const dateFormat = `20060102`
+			rotate := current + `_` + time.Now().Format(dateFormat)
 			if err := os.Rename(current, rotate); err != nil {
 				fmt.Println(err)
 			}
 		}
 	}
+}
+
+func replaceFileByRotation(logger *logrus.Logger) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	if err := logger.Writer().Close(); err != nil {
+		fmt.Println(err)
+	}
+	logger.Info(`This line should not be written to log.`)
+	TerminateLogging(0)
 }
