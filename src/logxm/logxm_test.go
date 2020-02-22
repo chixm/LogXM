@@ -10,9 +10,15 @@ func TestLogging(t *testing.T) {
 
 	c := StandardConfig()
 
-	New(c)
+	logger := New(c)
 
-	//TerminateLogging(0)
+	go func() {
+		t := time.NewTicker(1 * time.Second)
+		select {
+		case <-t.C:
+			logger.Info(`Log Every Second`)
+		}
+	}()
 
 	time.Sleep(1 * time.Minute)
 }

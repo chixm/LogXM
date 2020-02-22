@@ -2,6 +2,7 @@ package logxm
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -13,10 +14,6 @@ import (
 /**
  * logxm is the Log library for Golang server.
  */
-var logFile *os.File
-
-// For Log file lock
-var mutex sync.Mutex
 
 // LoggerConfiguration is a configuration for logging
 type LoggerConfiguration struct {
@@ -47,16 +44,8 @@ func setupLog(config *LoggerConfiguration) *logrus.Logger {
 	}
 	// Configure Log Formats
 	var log = logrus.New()
-	mode := int32(0777)
-	if config.WriteToFile { // create log directory
-		logDir := `.` + string(filepath.Separator) + config.DirName
-		if _, err := os.Stat(logDir); os.IsNotExist(err) {
-			err := os.Mkdir(logDir, os.FileMode(mode))
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-	}
+	// Make Log Directory
+	createLogDir(config)
 	logFile := getLogFile(config)
 	f := new(logrus.JSONFormatter)
 	f.TimestampFormat = config.DateFormat
@@ -65,15 +54,28 @@ func setupLog(config *LoggerConfiguration) *logrus.Logger {
 	log.WithField("host", hostname) //always write log with hostname.
 
 	if config.WriteToFile {
-		log.SetOutput(logFile)
+		writer := &fileWriter{w: logFile}
+		log.SetOutput(writer.w)
+		if config.LogRotation > 0 {
+			go rotateLogging(config, writer)
+		}
 	} else {
 		log.SetOutput(os.Stdout)
 	}
-	if config.LogRotation > 0 {
-		go rotateLogging(config, log)
-	}
 	log.Info("LogXM is Setup for logging.")
 	return log
+}
+
+func createLogDir(config *LoggerConfiguration) {
+	mode := int32(0777)
+	if config.WriteToFile { // create log directory
+		logDir := `.` + string(filepath.Separator) + config.DirName
+		if _, err := os.Stat(logDir); os.IsNotExist(err) {
+			if err := os.Mkdir(logDir, os.FileMode(mode)); err != nil {
+				fmt.Println(err)
+			}
+		}
+	}
 }
 
 // StandardConfig is Standard Configuration for Logxm
@@ -92,18 +94,15 @@ func getLogFile(config *LoggerConfiguration) *os.File {
 }
 
 func getLogFileName(config *LoggerConfiguration) string {
-	return `./` + config.DirName + `/` + config.FileName
-}
-
-// TerminateLogging : use this when you want to finish writing log.
-func TerminateLogging(code int) {
-	if err := logFile.Close(); err != nil {
-		fmt.Println(err)
+	if config.LogRotation == 0 {
+		return `./` + config.DirName + `/` + config.FileName
 	}
+	const dateFormat = `20060102030405`
+	return `./` + config.DirName + `/` + config.FileName + `_` + time.Now().Format(dateFormat)
 }
 
 // rotates log file every day.
-func rotateLogging(config *LoggerConfiguration, logger *logrus.Logger) {
+func rotateLogging(config *LoggerConfiguration, w *fileWriter) {
 	tick := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
 	for {
@@ -111,24 +110,33 @@ func rotateLogging(config *LoggerConfiguration, logger *logrus.Logger) {
 		case <-tick.C:
 			// rename current logging file and create new one
 			fmt.Println(`Log rotate executed.`)
-			replaceFileByRotation(logger)
-			// remake new file
-			current := getLogFileName(config)
-			const dateFormat = `20060102`
-			rotate := current + `_` + time.Now().Format(dateFormat)
-			if err := os.Rename(current, rotate); err != nil {
-				fmt.Println(err)
-			}
+			replaceFileByRotation(config, w)
 		}
 	}
 }
 
-func replaceFileByRotation(logger *logrus.Logger) {
-	mutex.Lock()
-	defer mutex.Unlock()
-	if err := logger.Writer().Close(); err != nil {
-		fmt.Println(err)
+func replaceFileByRotation(config *LoggerConfiguration, w *fileWriter) {
+	nextFile := getLogFile(config)
+	w.exchange(nextFile)
+}
+
+type fileWriter struct {
+	w     io.Writer
+	mutex sync.Mutex
+}
+
+func (f *fileWriter) Write(b []byte) (int, error) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	return f.w.Write(b)
+}
+
+// 書き込み先を交換する
+func (f *fileWriter) exchange(newFile *os.File) {
+	f.mutex.Lock()
+	if closer, ok := f.w.(io.Closer); ok {
+		defer closer.Close()
 	}
-	logger.Info(`This line should not be written to log.`)
-	TerminateLogging(0)
+	defer f.mutex.Unlock()
+	f.w = newFile
 }
