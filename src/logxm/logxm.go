@@ -31,7 +31,7 @@ type LoggerConfiguration struct {
  * useFile true:uses logfile false: outputs to standard output
  */
 
-// New : Create new Logger
+// New : Create new Logger if the config was set to nil, default configuration is applyed.
 func New(config *LoggerConfiguration) *logrus.Logger {
 	return setupLog(config)
 }
@@ -108,7 +108,6 @@ func rotateLogging(config *LoggerConfiguration, w *fileWriter) {
 	for {
 		select {
 		case <-tick.C:
-			// rename current logging file and create new one
 			fmt.Println(`Log rotate executed.`)
 			replaceFileByRotation(config, w)
 		}

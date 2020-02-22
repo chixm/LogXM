@@ -8,9 +8,7 @@ import (
 func TestLogging(t *testing.T) {
 	t.Log(`Logxm Test`)
 
-	c := StandardConfig()
-
-	logger := New(c)
+	logger := New(nil)
 
 	go func() {
 		t := time.NewTicker(1 * time.Second)
