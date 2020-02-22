@@ -55,7 +55,7 @@ func setupLog(config *LoggerConfiguration) *logrus.Logger {
 
 	if config.WriteToFile {
 		writer := &fileWriter{w: logFile}
-		log.SetOutput(writer.w)
+		log.SetOutput(writer)
 		if config.LogRotation > 0 {
 			go rotateLogging(config, writer)
 		}
@@ -128,6 +128,7 @@ type fileWriter struct {
 func (f *fileWriter) Write(b []byte) (int, error) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
+	fmt.Println(`Write called`)
 	return f.w.Write(b)
 }
 
@@ -136,7 +137,10 @@ func (f *fileWriter) exchange(newFile *os.File) {
 	f.mutex.Lock()
 	if closer, ok := f.w.(io.Closer); ok {
 		defer closer.Close()
+	} else {
+		fmt.Println(`Failed to close past file.`)
 	}
 	defer f.mutex.Unlock()
+	fmt.Println(`File exchanged.`)
 	f.w = newFile
 }
