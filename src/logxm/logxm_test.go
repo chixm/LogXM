@@ -14,9 +14,11 @@ func TestLogging(t *testing.T) {
 
 	go func() {
 		t := time.NewTicker(1 * time.Second)
-		select {
-		case <-t.C:
-			logger.Info(`Log Every Second`)
+		for {
+			select {
+			case <-t.C:
+				logger.Info(`Log Every Second`)
+			}
 		}
 	}()
 
