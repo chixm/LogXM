@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/robfig/cron"
+
 	logrus "github.com/sirupsen/logrus"
 )
 
@@ -103,16 +105,12 @@ func getLogFileName(config *LoggerConfiguration) string {
 
 // rotates log file every day.
 func rotateLogging(config *LoggerConfiguration, w *fileWriter) {
-	tick := time.NewTicker(10 * time.Second)
-	defer tick.Stop()
-	for {
-		select {
-		case <-tick.C:
-			fmt.Println(`Log rotate executed.`)
-			deleteOutDatedLogFile(config, w)
-			replaceFileByRotation(config, w)
-		}
-	}
+	cron := cron.New()
+	cron.AddFunc("0 0 * * * ", func() {
+		fmt.Println(`Log rotate executed.`)
+		deleteOutDatedLogFile(config, w)
+		replaceFileByRotation(config, w)
+	})
 }
 
 func deleteOutDatedLogFile(config *LoggerConfiguration, w *fileWriter) bool {
