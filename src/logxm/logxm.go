@@ -80,8 +80,8 @@ func createLogDir(config *LoggerConfiguration) {
 
 // StandardConfig is Standard Configuration for Logxm
 func StandardConfig() *LoggerConfiguration {
-	return &LoggerConfiguration{DirName: `log`, FileName: `application.log`, WriteToFile: true,
-		DateFormat: "2006-01-02T15:04:05.999Z07:00", LogRotation: 7}
+	return &LoggerConfiguration{DirName: `log`, FileName: `application`, WriteToFile: true,
+		DateFormat: "2006-01-02T15:04:05.999Z07:00", LogRotation: 3}
 }
 
 func getLogFile(config *LoggerConfiguration) *os.File {
@@ -95,10 +95,10 @@ func getLogFile(config *LoggerConfiguration) *os.File {
 
 func getLogFileName(config *LoggerConfiguration) string {
 	if config.LogRotation == 0 {
-		return `./` + config.DirName + `/` + config.FileName
+		return `./` + config.DirName + `/` + config.FileName + `.log`
 	}
 	const dateFormat = `20060102030405`
-	return `./` + config.DirName + `/` + config.FileName + `_` + time.Now().Format(dateFormat)
+	return `./` + config.DirName + `/` + config.FileName + `_` + time.Now().Format(dateFormat) + `.log`
 }
 
 // rotates log file every day.
@@ -109,9 +109,24 @@ func rotateLogging(config *LoggerConfiguration, w *fileWriter) {
 		select {
 		case <-tick.C:
 			fmt.Println(`Log rotate executed.`)
+			deleteOutDatedLogFile(config, w)
 			replaceFileByRotation(config, w)
 		}
 	}
+}
+
+func deleteOutDatedLogFile(config *LoggerConfiguration, w *fileWriter) bool {
+	var oldFile = w.w.(*os.File)
+	w.history = append(w.history, oldFile)
+	if len(w.history) >= config.LogRotation {
+		// delete last appended file
+		if err := os.Remove(w.history[0].Name()); err != nil {
+			fmt.Printf(`Failed to delete old file %v`, err)
+		}
+		//delete file name from history
+		w.history = w.history[1:]
+	}
+	return true
 }
 
 func replaceFileByRotation(config *LoggerConfiguration, w *fileWriter) {
@@ -120,14 +135,15 @@ func replaceFileByRotation(config *LoggerConfiguration, w *fileWriter) {
 }
 
 type fileWriter struct {
-	w     io.Writer
-	mutex sync.Mutex
+	w       io.Writer
+	mutex   sync.Mutex
+	history []*os.File
 }
 
 func (f *fileWriter) Write(b []byte) (int, error) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
-	fmt.Println(`Write called`)
+	fmt.Println(`Writing...`)
 	return f.w.Write(b)
 }
 
