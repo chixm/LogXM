@@ -16,6 +16,7 @@ func TestLogging(t *testing.T) {
 			select {
 			case <-t.C:
 				logger.Info(`Log Every Second`)
+				logger.Warn(`Warning level log.`)
 			}
 		}
 	}()
