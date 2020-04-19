@@ -15,8 +15,10 @@ func TestLogging(t *testing.T) {
 		for {
 			select {
 			case <-t.C:
-				logger.Info(`Log Every Second`)
+				logger.Info(`This is Info level log.`)
 				logger.Warn(`Warning level log.`)
+				logger.Error(`Error level log.`)
+				logger.Fatal(`Fatal level log. This method finishes application with error.`)
 			}
 		}
 	}()

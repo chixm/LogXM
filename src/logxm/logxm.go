@@ -19,11 +19,13 @@ import (
 
 // LoggerConfiguration is a configuration for logging
 type LoggerConfiguration struct {
-	DirName     string // directory to put log files in.
-	WriteToFile bool   // if true writes to file, false writes to stdout.
-	FileName    string // logfile name
-	DateFormat  string // ex."2006-01-02T15:04:05.999Z07:00"
-	LogRotation int    // max date to hold daily log files. if 0 is set, logfile does not rotate.
+	Loglevel        logrus.Level // loglevel
+	DirName         string       // directory to put log files in.
+	WriteToFile     bool         // if true writes to file, false writes to stdout.
+	FileName        string       // logfile name
+	DateFormat      string       // ex."2006-01-02T15:04:05.999Z07:00"
+	LogRotation     int          // max date to hold daily log files. if 0 is set, logfile does not rotate.
+	IncludeHostName bool         // always write host name to log.(use for multiple server logging)
 }
 
 /**
@@ -34,35 +36,32 @@ type LoggerConfiguration struct {
  */
 
 // New : Create new Logger if the config was set to nil, default configuration is applyed.
-func New(config *LoggerConfiguration) *logrus.Logger {
+func New(config *LoggerConfiguration) *XmLogger {
 	return setupLog(config)
 }
 
 // SetupLog : Call this function first to start logging
-func setupLog(config *LoggerConfiguration) *logrus.Logger {
+func setupLog(config *LoggerConfiguration) *XmLogger {
 	// if no configuration is set, use default
 	if config == nil {
 		config = StandardConfig()
 	}
 	// Configure Log Formats
-	var log = logrus.New()
+	var log = xmNew(config.IncludeHostName)
 	// Make Log Directory
 	createLogDir(config)
 	logFile := getLogFile(config)
 	f := new(logrus.JSONFormatter)
 	f.TimestampFormat = config.DateFormat
-	log.Formatter = f
-	hostname, _ := os.Hostname()
-	log.WithField("host", hostname) //always write log with hostname.
-
+	log.logger.Formatter = f
 	if config.WriteToFile {
 		writer := &fileWriter{w: logFile}
-		log.SetOutput(writer)
+		log.logger.SetOutput(writer)
 		if config.LogRotation > 0 {
 			go rotateLogging(config, writer)
 		}
 	} else {
-		log.SetOutput(os.Stdout)
+		log.logger.SetOutput(os.Stdout)
 	}
 	log.Info("LogXM is Setup for logging.")
 	return log
@@ -82,8 +81,8 @@ func createLogDir(config *LoggerConfiguration) {
 
 // StandardConfig is Standard Configuration for Logxm
 func StandardConfig() *LoggerConfiguration {
-	return &LoggerConfiguration{DirName: `log`, FileName: `application`, WriteToFile: true,
-		DateFormat: "2006-01-02T15:04:05.999Z07:00", LogRotation: 3}
+	return &LoggerConfiguration{Loglevel: logrus.DebugLevel, DirName: `log`, FileName: `application`, WriteToFile: true,
+		DateFormat: "2006-01-02T15:04:05.999Z07:00", LogRotation: 3, IncludeHostName: true}
 }
 
 func getLogFile(config *LoggerConfiguration) *os.File {
